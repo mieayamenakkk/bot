@@ -1,0 +1,2 @@
+# bot
+pengaplikasian bot
