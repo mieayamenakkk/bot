@@ -1,0 +1,62 @@
+// Data Interaksi dari pengguna (moderator/admin/developer)
+const { guild_id, member, channel_id, data } = context.params.event;
+
+const newStatusName = data.options.find(opt => opt.name === 'status_baru').value;
+
+const ALLOWED_ROLE_IDS = [
+  'Developer',
+  'Admin',
+  'moderator'
+];
+
+const hasAllowedRole = member.roles.some(roleId => ALLOWED_ROLE_IDS.includes(roleId));
+
+if (!hasAllowedRole) {
+  // Jika tidak memiliki Role yang diizinkan, kirim pesan error
+  return lib.discord.interactions.responses.create({
+    token: context.params.event.token,
+    content: `❌ **Akses Ditolak.** Anda harus memiliki role **Developer**, **Admin**, atau **Moderator** untuk mengubah status permintaan.`,
+    flags: 64 // Pesan ephemeral
+  });
+}
+
+
+// Asumsi: Command ini dijalankan di dalam Thread (Post Forum)
+const postInfo = await lib.discord.channels.retrieve({ channel_id: channel_id });
+const parentId = postInfo.parent_id;
+
+const parentChannel = await lib.discord.channels.retrieve({ channel_id: parentId });
+const availableTags = parentChannel.available_tags;
+
+const ALLOWED_STATUS = ['dikirim', 'diproses', 'selesai', 'ditolak'];
+
+// Cari Tag ID yang cocok berdasarkan input user (newStatusName)
+const targetTag = availableTags.find(
+  tag => tag.name.toLowerCase() === newStatusName.toLowerCase() && ALLOWED_STATUS.includes(tag.name.toLowerCase())
+);
+
+if (targetTag) {
+  // --- 3. Ubah Tag pada Post Forum ---
+  await lib.discord.channels.threads.update(
+    {
+      thread_id: channel_id,
+      applied_tags: [targetTag.id] 
+    }
+  );
+
+  // --- 4. Kirim Notifikasi Sukses ---
+  return lib.discord.interactions.responses.create({
+    token: context.params.event.token,
+    content: `Status permintaan di Post ini berhasil diubah menjadi **${targetTag.name.toUpperCase()}** oleh **${member.user.username}**.`,
+    flags: 64 // Pesan ephemeral (hanya Admin/Moderator yang melihat)
+  });
+
+} else {
+  // Jika Tag yang diminta tidak ditemukan atau tidak termasuk dalam status yang valid
+  const validStatuses = ALLOWED_STATUS.map(s => `\`${s}\``).join(', ');
+  return lib.discord.interactions.responses.create({
+    token: context.params.event.token,
+    content: `⚠️ Status **${newStatusName}** tidak valid atau tidak ditemukan. Status yang sah adalah: ${validStatuses}.`,
+    flags: 64
+  });
+}
